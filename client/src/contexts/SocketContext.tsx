@@ -15,6 +15,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const messageHandlers = useRef<Set<(type: string, payload: any) => void>>(new Set());
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     const connect = () => {
@@ -23,45 +24,48 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         const wsUrl = `${protocol}//${window.location.host}/ws`;
         const ws = new WebSocket(wsUrl);
 
-      ws.onopen = () => {
-        setIsConnected(true);
-        setSocket(ws);
-      };
+        ws.onopen = () => {
+          setIsConnected(true);
+          setSocket(ws);
+          socketRef.current = ws;
+        };
 
-      ws.onclose = () => {
-        setIsConnected(false);
-        setSocket(null);
-        reconnectTimeoutRef.current = setTimeout(connect, 3000);
-      };
+        ws.onclose = () => {
+          setIsConnected(false);
+          setSocket(null);
+          socketRef.current = null;
+          reconnectTimeoutRef.current = setTimeout(connect, 3000);
+        };
 
-      ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        ws.close();
-      };
+        ws.onerror = (error) => {
+          console.error("WebSocket error:", error);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const { type, payload } = JSON.parse(event.data);
+            messageHandlers.current.forEach((handler) => handler(type, payload));
+          } catch (e) {
+            console.error("Failed to parse WebSocket message:", e);
+          }
+        };
+
+        socketRef.current = ws;
       } catch (err) {
         console.error("Failed to create WebSocket:", err);
         reconnectTimeoutRef.current = setTimeout(connect, 3000);
       }
-
-      ws.onmessage = (event) => {
-        try {
-          const { type, payload } = JSON.parse(event.data);
-          messageHandlers.current.forEach((handler) => handler(type, payload));
-        } catch (e) {
-          console.error("Failed to parse WebSocket message:", e);
-        }
-      };
-
-      return ws;
     };
 
-    const ws = connect();
+    connect();
 
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      ws.close();
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
     };
   }, []);
 

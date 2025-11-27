@@ -57,24 +57,36 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
 
-  useEffect(() => {
-    const unsubscribe = onMessage((type, payload) => {
-      if (type === "incoming-call") {
-        setIncomingCall({ call: payload.call, initiator: payload.initiator });
-      }
-      if (type === "webrtc-offer") {
-        handleOffer(payload.fromUserId, payload.offer);
-      }
-      if (type === "webrtc-answer") {
-        handleAnswer(payload.fromUserId, payload.answer);
-      }
-      if (type === "ice-candidate") {
-        handleIceCandidate(payload.fromUserId, payload.candidate);
-      }
-    });
+  // Define createPeerConnection FIRST, before it's used in other functions
+  const createPeerConnection = useCallback((userId: string): RTCPeerConnection => {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    return unsubscribe;
-  }, [onMessage]);
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendMessage("ice-candidate", {
+          targetUserId: userId,
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      setState((prev) => {
+        const newStreams = new Map(prev.remoteStreams);
+        newStreams.set(userId, event.streams[0]);
+        return { ...prev, remoteStreams: newStreams };
+      });
+    };
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+    }
+
+    peerConnections.current.set(userId, pc);
+    return pc;
+  }, [sendMessage]);
 
   const handleOffer = useCallback(async (userId: string, offer: RTCSessionDescriptionInit) => {
     try {
@@ -118,35 +130,24 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const createPeerConnection = useCallback((userId: string): RTCPeerConnection => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        sendMessage("ice-candidate", {
-          targetUserId: userId,
-          candidate: event.candidate,
-        });
+  useEffect(() => {
+    const unsubscribe = onMessage((type, payload) => {
+      if (type === "incoming-call") {
+        setIncomingCall({ call: payload.call, initiator: payload.initiator });
       }
-    };
+      if (type === "webrtc-offer") {
+        handleOffer(payload.fromUserId, payload.offer);
+      }
+      if (type === "webrtc-answer") {
+        handleAnswer(payload.fromUserId, payload.answer);
+      }
+      if (type === "ice-candidate") {
+        handleIceCandidate(payload.fromUserId, payload.candidate);
+      }
+    });
 
-    pc.ontrack = (event) => {
-      setState((prev) => {
-        const newStreams = new Map(prev.remoteStreams);
-        newStreams.set(userId, event.streams[0]);
-        return { ...prev, remoteStreams: newStreams };
-      });
-    };
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current!);
-      });
-    }
-
-    peerConnections.current.set(userId, pc);
-    return pc;
-  }, [sendMessage]);
+    return unsubscribe;
+  }, [onMessage, handleOffer, handleAnswer, handleIceCandidate]);
 
   const startCall = async (conversationId: string, type: "voice" | "video", participants: User[]) => {
     try {
