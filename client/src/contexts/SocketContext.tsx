@@ -18,10 +18,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const connect = () => {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.hostname + (window.location.port ? `:${window.location.port}` : '');
-      const wsUrl = `${protocol}//${host}/ws`;
-      const ws = new WebSocket(wsUrl);
+      try {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         setIsConnected(true);
@@ -34,9 +34,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         reconnectTimeoutRef.current = setTimeout(connect, 3000);
       };
 
-      ws.onerror = () => {
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
         ws.close();
       };
+      } catch (err) {
+        console.error("Failed to create WebSocket:", err);
+        reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      }
 
       ws.onmessage = (event) => {
         try {

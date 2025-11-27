@@ -62,10 +62,61 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (type === "incoming-call") {
         setIncomingCall({ call: payload.call, initiator: payload.initiator });
       }
+      if (type === "webrtc-offer") {
+        handleOffer(payload.fromUserId, payload.offer);
+      }
+      if (type === "webrtc-answer") {
+        handleAnswer(payload.fromUserId, payload.answer);
+      }
+      if (type === "ice-candidate") {
+        handleIceCandidate(payload.fromUserId, payload.candidate);
+      }
     });
 
     return unsubscribe;
   }, [onMessage]);
+
+  const handleOffer = useCallback(async (userId: string, offer: RTCSessionDescriptionInit) => {
+    try {
+      let pc = peerConnections.current.get(userId);
+      if (!pc) {
+        pc = createPeerConnection(userId);
+      }
+
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      sendMessage("webrtc-answer", {
+        targetUserId: userId,
+        answer: pc.localDescription,
+      });
+    } catch (err) {
+      console.error("Error handling offer:", err);
+    }
+  }, [createPeerConnection, sendMessage]);
+
+  const handleAnswer = useCallback(async (userId: string, answer: RTCSessionDescriptionInit) => {
+    try {
+      const pc = peerConnections.current.get(userId);
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      }
+    } catch (err) {
+      console.error("Error handling answer:", err);
+    }
+  }, []);
+
+  const handleIceCandidate = useCallback((userId: string, candidate: RTCIceCandidateInit) => {
+    try {
+      const pc = peerConnections.current.get(userId);
+      if (pc) {
+        pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    } catch (err) {
+      console.error("Error adding ICE candidate:", err);
+    }
+  }, []);
 
   const createPeerConnection = useCallback((userId: string): RTCPeerConnection => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -115,6 +166,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
         isVideoOff: type === "voice",
       }));
 
+      // Create peer connections and send offers
+      for (const participant of participants) {
+        const pc = createPeerConnection(participant.id);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        sendMessage("webrtc-offer", {
+          targetUserId: participant.id,
+          offer: pc.localDescription,
+        });
+      }
+
       sendMessage("start-call", {
         conversationId,
         type,
@@ -136,18 +199,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: incomingCall.type === "video",
+        video: incomingCall.call.type === "video",
       });
       localStreamRef.current = stream;
+
+      // Create peer connection with initiator
+      const pc = createPeerConnection(incomingCall.initiator.id);
 
       setState((prev) => ({
         ...prev,
         isInCall: true,
-        currentCall: incomingCall,
+        currentCall: incomingCall.call,
         localStream: stream,
-        callType: incomingCall.type,
+        callType: incomingCall.call.type,
+        participants: [incomingCall.initiator],
         isMuted: false,
-        isVideoOff: incomingCall.type === "voice",
+        isVideoOff: incomingCall.call.type === "voice",
       }));
 
       setIncomingCall(null);
