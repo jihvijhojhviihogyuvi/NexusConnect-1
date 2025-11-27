@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useRef, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import type { Call, User } from "@shared/schema";
 import { useSocket } from "./SocketContext";
 
@@ -14,6 +14,11 @@ interface CallState {
   participants: User[];
 }
 
+interface IncomingCallInfo {
+  call: Call;
+  initiator: User;
+}
+
 interface CallContextType extends CallState {
   startCall: (conversationId: string, type: "voice" | "video", participants: User[]) => Promise<void>;
   joinCall: (callId: string) => Promise<void>;
@@ -23,7 +28,7 @@ interface CallContextType extends CallState {
   toggleScreenShare: () => Promise<void>;
   acceptCall: (callId: string) => Promise<void>;
   declineCall: (callId: string) => void;
-  incomingCall: Call | null;
+  incomingCall: IncomingCallInfo | null;
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
@@ -47,10 +52,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
     callType: null,
     participants: [],
   });
-  const [incomingCall, setIncomingCall] = useState<Call | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallInfo | null>(null);
 
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onMessage((type, payload) => {
+      if (type === "incoming-call") {
+        setIncomingCall({ call: payload.call, initiator: payload.initiator });
+      }
+    });
+
+    return unsubscribe;
+  }, [onMessage]);
 
   const createPeerConnection = useCallback((userId: string): RTCPeerConnection => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });

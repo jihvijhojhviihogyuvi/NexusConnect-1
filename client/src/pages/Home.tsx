@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ConversationList } from "@/components/ConversationList";
 import { ChatWindow } from "@/components/ChatWindow";
 import { CallUI } from "@/components/CallUI";
+import { IncomingCallDialog } from "@/components/IncomingCallDialog";
 import { NewConversationDialog } from "@/components/NewConversationDialog";
 import { NewGroupDialog } from "@/components/NewGroupDialog";
 import { GroupInfoSheet } from "@/components/GroupInfoSheet";
@@ -33,6 +34,7 @@ export default function Home() {
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
+  const { incomingCall } = useCall();
 
   const { data: selectedConversation } = useQuery<ConversationWithDetails>({
     queryKey: ["/api/conversations", selectedConversationId],
@@ -234,6 +236,14 @@ export default function Home() {
           onOpenChange={setShowGroupInfo}
           conversation={selectedConversation}
           currentUser={user}
+        />
+      )}
+
+      {incomingCall && (
+        <IncomingCallDialog
+          caller={incomingCall.initiator}
+          callType={incomingCall.call.type as "voice" | "video"}
+          callId={incomingCall.call.id}
         />
       )}
     </div>
