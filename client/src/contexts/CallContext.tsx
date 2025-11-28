@@ -130,6 +130,32 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const endCall = useCallback(() => {
+    peerConnections.current.forEach((pc) => pc.close());
+    peerConnections.current.clear();
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+
+    if (state.currentCall) {
+      sendMessage("end-call", { callId: state.currentCall.id });
+    }
+
+    setState({
+      isInCall: false,
+      currentCall: null,
+      localStream: null,
+      remoteStreams: new Map(),
+      isMuted: false,
+      isVideoOff: false,
+      isScreenSharing: false,
+      callType: null,
+      participants: [],
+    });
+  }, [state.currentCall, sendMessage]);
+
   useEffect(() => {
     const unsubscribe = onMessage((type, payload) => {
       if (type === "incoming-call") {
@@ -144,10 +170,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (type === "ice-candidate") {
         handleIceCandidate(payload.fromUserId, payload.candidate);
       }
+      if (type === "call-ended") {
+        // Close the call when the other person hangs up
+        endCall();
+      }
+      if (type === "call-declined") {
+        // Close the call if declined
+        endCall();
+        setIncomingCall(null);
+      }
     });
 
     return unsubscribe;
-  }, [onMessage, handleOffer, handleAnswer, handleIceCandidate]);
+  }, [onMessage, handleOffer, handleAnswer, handleIceCandidate, endCall]);
 
   const startCall = async (conversationId: string, type: "voice" | "video", participants: User[]) => {
     try {
@@ -231,31 +266,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
     sendMessage("decline-call", { callId });
   };
 
-  const endCall = () => {
-    peerConnections.current.forEach((pc) => pc.close());
-    peerConnections.current.clear();
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-    }
-
-    if (state.currentCall) {
-      sendMessage("end-call", { callId: state.currentCall.id });
-    }
-
-    setState({
-      isInCall: false,
-      currentCall: null,
-      localStream: null,
-      remoteStreams: new Map(),
-      isMuted: false,
-      isVideoOff: false,
-      isScreenSharing: false,
-      callType: null,
-      participants: [],
-    });
-  };
 
   const toggleMute = () => {
     if (localStreamRef.current) {
