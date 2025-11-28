@@ -123,11 +123,39 @@ export function ChatWindow({
   useEffect(() => {
     const unsubscribe = onMessage((type, payload) => {
       if (type === "new-message" && payload.conversationId === conversationId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+        // Update cache directly instead of invalidating (fast path)
+        queryClient.setQueryData(["/api/conversations", conversationId, "messages"], (oldData: MessageWithSender[] | undefined) => {
+          if (!oldData) return oldData;
+          // Prevent duplicates
+          const exists = oldData.some((m) => m.id === payload.message.id);
+          if (exists) return oldData;
+          return [...oldData, payload.message];
+        });
+        
+        // Update conversation last message
+        queryClient.setQueryData(["/api/conversations"], (oldData: ConversationWithDetails[] | undefined) => {
+          if (!oldData) return oldData;
+          return oldData.map((conv) =>
+            conv.id === conversationId
+              ? {
+                  ...conv,
+                  lastMessage: payload.message,
+                  updatedAt: new Date().toISOString(),
+                }
+              : conv
+          );
+        });
       }
       if (type === "typing-status" && payload.conversationId === conversationId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+        queryClient.setQueryData(["/api/conversations", conversationId], (oldData: ConversationWithDetails | undefined) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            participants: oldData.participants.map((p) =>
+              p.userId === payload.userId ? { ...p, isTyping: payload.isTyping } : p
+            ),
+          };
+        });
       }
     });
 

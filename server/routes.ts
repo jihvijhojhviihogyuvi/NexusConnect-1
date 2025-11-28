@@ -244,8 +244,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const messages = await storage.getConversationMessages(req.params.id, limit, offset);
 
-      // Mark messages as read
-      await storage.markMessagesAsRead(req.params.id, userId);
+      // Mark messages as read async (don't await - send response first)
+      storage.markMessagesAsRead(req.params.id, userId).catch((err) => console.error("Mark read error:", err));
 
       res.json(messages);
     } catch (error) {
