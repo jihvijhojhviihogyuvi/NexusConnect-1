@@ -66,9 +66,48 @@ export function ChatWindow({
 
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    onMutate: async (variables) => {
+      // Cancel ongoing queries
+      await queryClient.cancelQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
+
+      // Get previous data
+      const previousMessages = queryClient.getQueryData<MessageWithSender[]>(["/api/conversations", conversationId, "messages"]);
+
+      // Create optimistic message
+      const optimisticMessage: MessageWithSender = {
+        id: `temp-${Date.now()}`,
+        conversationId,
+        senderId: currentUser.id,
+        content: variables.content,
+        messageType: variables.attachments?.length ? "image" : "text",
+        attachments: variables.attachments?.map((f) => ({ url: "", type: f.type, name: f.name, size: f.size })),
+        replyToId: variables.replyToId || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        deletedAt: null,
+        sender: currentUser,
+        replyTo: null,
+      };
+
+      // Update cache optimistically
+      if (previousMessages) {
+        queryClient.setQueryData(["/api/conversations", conversationId, "messages"], [...previousMessages, optimisticMessage]);
+      }
+
+      return { previousMessages };
+    },
+    onSuccess: (data, variables, context) => {
+      // Update cache with actual message
+      const previousMessages = context?.previousMessages || [];
+      const optimisticId = `temp-${Date.now()}`;
+      const filtered = previousMessages.filter((m: any) => !m.id.startsWith("temp-"));
+      queryClient.setQueryData(["/api/conversations", conversationId, "messages"], [...filtered, data]);
+    },
+    onError: (err, variables, context) => {
+      // Restore previous messages on error
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["/api/conversations", conversationId, "messages"], context.previousMessages);
+      }
     },
   });
 

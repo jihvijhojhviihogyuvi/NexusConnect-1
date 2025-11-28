@@ -278,13 +278,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const messageWithSender = await storage.getMessageWithSender(message.id);
 
-      // Broadcast to conversation participants
-      await broadcastToConversation(conversationId, "new-message", {
+      // Send response immediately
+      res.status(201).json(messageWithSender);
+
+      // Broadcast to conversation participants async (don't wait)
+      broadcastToConversation(conversationId, "new-message", {
         conversationId,
         message: messageWithSender,
-      });
-
-      res.status(201).json(messageWithSender);
+      }).catch((err) => console.error("Broadcast error:", err));
     } catch (error) {
       console.error("Error creating message:", error);
       res.status(500).json({ message: "Failed to send message" });
