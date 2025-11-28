@@ -186,9 +186,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const startCall = async (conversationId: string, type: "voice" | "video", participants: User[]) => {
     try {
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      };
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: type === "video",
+        audio: audioConstraints,
+        video: type === "video" ? true : false,
       });
       localStreamRef.current = stream;
 
@@ -233,9 +239,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!incomingCall) return;
 
     try {
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      };
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: incomingCall.call.type === "video",
+        audio: audioConstraints,
+        video: incomingCall.call.type === "video" ? true : false,
       });
       localStreamRef.current = stream;
 
