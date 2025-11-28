@@ -192,10 +192,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
         autoGainControl: true,
       };
       
+      // Request both audio and video for all calls (to match video call setup)
+      // For voice calls, we'll just disable the video track
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
-        video: type === "video" ? true : false,
+        video: true,
       });
+      
+      // For voice-only calls, disable the video track
+      if (type === "voice") {
+        stream.getVideoTracks().forEach((track) => {
+          track.enabled = false;
+        });
+      }
+      
       localStreamRef.current = stream;
 
       setState((prev) => ({
@@ -245,10 +255,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
         autoGainControl: true,
       };
       
+      // Request both audio and video for all calls (to match video call setup)
+      // For voice calls, we'll just disable the video track
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
-        video: incomingCall.call.type === "video" ? true : false,
+        video: true,
       });
+      
+      // For voice-only calls, disable the video track
+      if (incomingCall.call.type === "voice") {
+        stream.getVideoTracks().forEach((track) => {
+          track.enabled = false;
+        });
+      }
+      
       localStreamRef.current = stream;
 
       // Create peer connection with initiator
