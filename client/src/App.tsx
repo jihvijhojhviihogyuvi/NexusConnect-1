@@ -12,9 +12,11 @@ import Landing from "@/pages/Landing";
 import Home from "@/pages/Home";
 import Signin from "@/pages/Signin";
 import Signup from "@/pages/Signup";
+import Onboarding from "@/pages/Onboarding";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const needsOnboarding = isAuthenticated && user && !user.firstName;
 
   if (isLoading) {
     return (
@@ -50,6 +52,10 @@ function Router() {
         <Route component={Landing} />
       </Switch>
     );
+  }
+
+  if (needsOnboarding) {
+    return <Onboarding />;
   }
 
   return (
