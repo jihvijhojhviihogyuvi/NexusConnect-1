@@ -4,6 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["openssh"]
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -71,6 +72,15 @@ author = 40799447
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python"
+
+[[workflows.workflow]]
+name = "ngrok2"
+mode = "sequential"
+author = 40799447
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "ngrok config add-authtoken 2wYRNDDwbW2qWK961ICYHTeHfcW_4Pk2XNhiVVSY9K1HY3ipP"
 
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_websocket:1.0.0"]
