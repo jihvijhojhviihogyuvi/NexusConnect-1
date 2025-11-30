@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,7 @@ export default function Signin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const handleSignin = async (e: React.FormEvent) => {
@@ -21,7 +21,7 @@ export default function Signin() {
     try {
       await apiRequest("POST", "/api/auth/signin", { username, password });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      navigate("/");
+      setLocation("/");
     } catch (error: any) {
       toast({
         title: "Error",
