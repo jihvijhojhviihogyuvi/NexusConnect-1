@@ -290,7 +290,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Message routes
   app.get("/api/conversations/:id/messages", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
 
@@ -308,7 +308,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/conversations/:id/messages", isAuthenticated, upload.array("attachments", 5), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const conversationId = req.params.id;
       const { content, replyToId } = req.body;
 
@@ -346,7 +346,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/messages/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const message = await storage.getMessage(req.params.id);
 
       if (!message) {
@@ -374,7 +374,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/messages/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const message = await storage.getMessage(req.params.id);
 
       if (!message) {
@@ -403,7 +403,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Call routes
   app.post("/api/calls", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const { conversationId, type } = req.body;
 
       const call = await storage.createCall({
