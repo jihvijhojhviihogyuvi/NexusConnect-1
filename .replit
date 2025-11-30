@@ -41,14 +41,18 @@ task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
 
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "ssh 80:localhost:5000 serveo.net"
+
 [[workflows.workflow]]
-name = "cool"
+name = "better"
 mode = "sequential"
-author = 50309456
+author = 40799447
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "echo $REPL_ID"
+args = "ssh 80:localhost:5000 serveo.net"
 
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_websocket:1.0.0"]
