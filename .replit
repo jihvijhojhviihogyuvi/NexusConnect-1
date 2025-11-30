@@ -36,6 +36,7 @@ args = "Start application"
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
+mode = "parallel"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
@@ -44,7 +45,7 @@ waitForPort = 5000
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "ssh 80:localhost:5000 serveo.net"
+args = "ssh -R 80:localhost:5000 serveo.net"
 
 [[workflows.workflow]]
 name = "better"
@@ -53,7 +54,7 @@ author = 40799447
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "ssh 80:localhost:5000 serveo.net"
+args = "ssh -R 80:localhost:5000 serveo.net"
 
 [[workflows.workflow]]
 name = "ngrok"
