@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "postgresql-16"]
+modules = ["nodejs-20", "web", "postgresql-16", "python-3.11"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
@@ -53,6 +53,24 @@ author = 40799447
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "ssh 80:localhost:5000 serveo.net"
+
+[[workflows.workflow]]
+name = "ngrok"
+mode = "sequential"
+author = 40799447
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 -m pip install ngrok"
+
+[[workflows.workflow]]
+name = "yes"
+mode = "sequential"
+author = 40799447
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python"
 
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_websocket:1.0.0"]
