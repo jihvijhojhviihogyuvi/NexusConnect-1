@@ -3,10 +3,11 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertMessageSchema, insertConversationSchema } from "@shared/schema";
+import { insertMessageSchema, insertConversationSchema, signupSchema, signinSchema } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import passport from "passport";
 
 // File upload configuration
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -67,10 +68,61 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     next();
   }, express.static(uploadDir));
 
-  // Auth routes
+  // Public auth routes
+  app.post("/api/auth/signup", async (req: any, res) => {
+    try {
+      const { username, password } = signupSchema.parse(req.body);
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already taken" });
+      }
+      const user = await storage.createUser(username, password);
+      req.login({ id: user.id, username: user.username }, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.status(201).json(user);
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message || "Signup failed" });
+    }
+  });
+
+  app.post("/api/auth/signin", (req, res, next) => {
+    try {
+      signinSchema.parse(req.body);
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message || "Invalid input" });
+    }
+    passport.authenticate("local", (err: any, user: any, info: any) => {
+      if (err) {
+        return res.status(500).json({ message: "Authentication error" });
+      }
+      if (!user) {
+        return res.status(401).json({ message: info?.message || "Invalid credentials" });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.json(user);
+      });
+    })(req, res, next);
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Logout failed" });
+      }
+      res.json({ message: "Logged out" });
+    });
+  });
+
+  // Protected auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -84,7 +136,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/auth/user", isAuthenticated, upload.single("avatar"), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const updates: any = {};
 
       if (req.body.firstName !== undefined) updates.firstName = req.body.firstName;
@@ -111,7 +163,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // User search
   app.get("/api/users", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const query = req.query.query as string || req.query["0"] as string || "";
       
       let users;
@@ -130,7 +182,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Conversation routes
   app.get("/api/conversations", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const conversations = await storage.getUserConversations(userId);
       res.json(conversations);
     } catch (error) {
@@ -141,7 +193,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/conversations/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const conversation = await storage.getConversationWithDetails(req.params.id, userId);
       if (!conversation) {
         return res.status(404).json({ message: "Conversation not found" });
@@ -155,7 +207,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/conversations", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.id || req.user?.claims?.sub;
       const { type, name, description, participantIds } = req.body;
 
       // For direct conversations, check if one already exists

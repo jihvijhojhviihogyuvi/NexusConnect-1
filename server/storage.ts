@@ -22,11 +22,13 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, ne } from "drizzle-orm";
+import bcryptjs from "bcryptjs";
 
 export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(username: string, password: string): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
   searchUsers(query: string, currentUserId: string): Promise<User[]>;
@@ -75,6 +77,18 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async createUser(username: string, password: string): Promise<User> {
+    const hashedPassword = await bcryptjs.hash(password, 10);
+    const [user] = await db
+      .insert(users)
+      .values({
+        username,
+        password: hashedPassword,
+      })
+      .returning();
     return user;
   }
 

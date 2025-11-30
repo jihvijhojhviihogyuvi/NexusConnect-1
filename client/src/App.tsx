@@ -10,6 +10,8 @@ import { useAuth } from "@/hooks/useAuth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
 import Home from "@/pages/Home";
+import Signin from "@/pages/Signin";
+import Signup from "@/pages/Signup";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -43,6 +45,8 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/signin" component={Signin} />
+        <Route path="/signup" component={Signup} />
         <Route component={Landing} />
       </Switch>
     );

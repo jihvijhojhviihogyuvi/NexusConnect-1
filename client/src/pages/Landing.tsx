@@ -49,8 +49,11 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button asChild data-testid="button-login">
-              <a href="/api/login">Sign In</a>
+            <Button variant="outline" asChild data-testid="button-signin">
+              <a href="/signin">Sign In</a>
+            </Button>
+            <Button asChild data-testid="button-signup">
+              <a href="/signup">Sign Up</a>
             </Button>
           </div>
         </div>
@@ -69,7 +72,7 @@ export default function Landing() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" asChild data-testid="button-get-started">
-                <a href="/api/login">Get Started Free</a>
+                <a href="/signup">Get Started Free</a>
               </Button>
               <Button size="lg" variant="outline" data-testid="button-learn-more">
                 Learn More
@@ -111,7 +114,7 @@ export default function Landing() {
               Join thousands of users who are already enjoying seamless communication with ChatFlow.
             </p>
             <Button size="lg" asChild data-testid="button-cta-signup">
-              <a href="/api/login">Create Your Account</a>
+              <a href="/signup">Create Your Account</a>
             </Button>
           </div>
         </section>
