@@ -33,14 +33,15 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Users table (extended for Replit Auth + app-specific fields)
+// Users table (with local auth + app-specific fields)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
+  username: varchar("username").unique().notNull(),
+  password: varchar("password").notNull(),
+  email: varchar("email"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  username: varchar("username").unique(),
   status: userStatusEnum("status").default("offline"),
   statusMessage: varchar("status_message"),
   bio: text("bio"),
@@ -52,6 +53,7 @@ export const users = pgTable("users", {
 }, (table) => [
   index("IDX_users_status").on(table.status),
   index("IDX_users_last_seen").on(table.lastSeenAt),
+  index("IDX_users_username").on(table.username),
 ]);
 
 // Conversations table (supports both direct and group)
@@ -236,6 +238,14 @@ export const callParticipantsRelations = relations(callParticipants, ({ one }) =
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export const updateUserSchema = insertUserSchema.partial();
 export const selectUserSchema = createSelectSchema(users);
+export const signupSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters").max(30, "Username must be at most 30 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
+export const signinSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
 
 export const insertConversationSchema = createInsertSchema(conversations).omit({ id: true, createdAt: true, updatedAt: true });
 export const updateConversationSchema = insertConversationSchema.partial();
@@ -267,6 +277,10 @@ export type Call = typeof calls.$inferSelect;
 export type InsertCall = z.infer<typeof insertCallSchema>;
 
 export type CallParticipant = typeof callParticipants.$inferSelect;
+
+// Auth types
+export type SignupInput = z.infer<typeof signupSchema>;
+export type SigninInput = z.infer<typeof signinSchema>;
 
 // Extended types for frontend use
 export type ConversationWithDetails = Conversation & {
