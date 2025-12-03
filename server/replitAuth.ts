@@ -65,12 +65,31 @@ export async function setupAuth(app: Express) {
     cb(null, user.id);
   });
 
-  passport.deserializeUser(async (id: string, cb) => {
+  passport.deserializeUser(async (id: string | undefined, cb) => {
+    console.debug("deserializeUser called with id:", id);
+
+    if (!id) {
+      console.debug("deserializeUser: no id in session");
+      // No id in session — not authenticated
+      return cb(null, false);
+    }
+
     try {
       const user = await storage.getUser(id);
+
+      if (!user) {
+        console.debug("deserializeUser: user not found for id", id);
+        // User not found in DB (maybe deleted) — clear session
+        return cb(null, false);
+      }
+
+      console.debug("deserializeUser: found user", user.id);
       cb(null, user);
     } catch (error) {
-      cb(error);
+      // Log error but don't crash the app — treat as unauthenticated
+      // Passport will surface errors when appropriate; avoid throwing here
+      console.error("Error deserializing user:", error);
+      return cb(null, false);
     }
   });
 }

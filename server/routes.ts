@@ -179,6 +179,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Admin endpoints for dev tools (only allowed in non-production)
+  app.get("/api/admin/users", isAuthenticated, async (req: any, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ message: "Not allowed in production" });
+    }
+    try {
+      const users = await storage.getAllUsersAdmin();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching admin users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.get("/api/admin/conversations", isAuthenticated, async (req: any, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ message: "Not allowed in production" });
+    }
+    try {
+      const convs = await storage.getAllConversations();
+      res.json(convs);
+    } catch (error) {
+      console.error("Error fetching admin conversations:", error);
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", isAuthenticated, async (req: any, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ message: "Not allowed in production" });
+    }
+    try {
+      await storage.deleteUser(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ message: "Failed to delete user" });
+    }
+  });
+
   // Conversation routes
   app.get("/api/conversations", isAuthenticated, async (req: any, res) => {
     try {

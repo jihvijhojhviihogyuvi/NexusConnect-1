@@ -66,6 +66,10 @@ export interface IStorage {
   addCallParticipant(callId: string, userId: string): Promise<CallParticipant>;
   updateCallParticipant(callId: string, userId: string, data: Partial<CallParticipant>): Promise<void>;
   removeCallParticipant(callId: string, userId: string): Promise<void>;
+  // Admin / maintenance
+  deleteUser(id: string): Promise<void>;
+  getAllUsersAdmin(): Promise<User[]>;
+  getAllConversations(): Promise<ConversationWithDetails[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -559,6 +563,42 @@ export class DatabaseStorage implements IStorage {
           eq(callParticipants.userId, userId)
         )
       );
+  }
+
+  // Admin / maintenance methods
+  async deleteUser(id: string): Promise<void> {
+    // Hard-delete user and dependent rows where necessary. Some tables have
+    // foreign keys with ON DELETE CASCADE; others (e.g. messages.senderId)
+    // must be removed explicitly.
+    await db.transaction(async (tx) => {
+      // remove messages sent by the user
+      await tx.delete(messageReceipts).where(eq(messageReceipts.userId, id));
+      await tx.delete(messages).where(eq(messages.senderId, id));
+
+      // remove call participations and calls initiated by the user
+      await tx.delete(callParticipants).where(eq(callParticipants.userId, id));
+      await tx.delete(calls).where(eq(calls.initiatorId, id));
+
+      // remove conversation participations
+      await tx.delete(conversationParticipants).where(eq(conversationParticipants.userId, id));
+
+      // finally remove the user record
+      await tx.delete(users).where(eq(users.id, id));
+    });
+  }
+
+  async getAllUsersAdmin(): Promise<User[]> {
+    return db.select().from(users).limit(200);
+  }
+
+  async getAllConversations(): Promise<ConversationWithDetails[]> {
+    const convs = await db.select().from(conversations).orderBy(desc(conversations.lastActivityAt)).limit(200);
+    const result: ConversationWithDetails[] = [];
+    for (const conv of convs) {
+      const details = await this.getConversationWithDetails(conv.id, "");
+      if (details) result.push(details);
+    }
+    return result;
   }
 }
 

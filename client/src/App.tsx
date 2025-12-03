@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
 import Home from "@/pages/Home";
+import DevPage from "@/pages/DevPage";
 import Signin from "@/pages/Signin";
 import Signup from "@/pages/Signup";
 import Onboarding from "@/pages/Onboarding";
@@ -63,6 +64,8 @@ function Router() {
       <CallProvider>
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/viewer" component={Home} />
+          <Route path="/dev" component={DevPage} />
           <Route component={NotFound} />
         </Switch>
       </CallProvider>
