@@ -567,22 +567,51 @@ export class DatabaseStorage implements IStorage {
 
   // Admin / maintenance methods
   async deleteUser(id: string): Promise<void> {
-    // Hard-delete user and dependent rows where necessary. Some tables have
-    // foreign keys with ON DELETE CASCADE; others (e.g. messages.senderId)
-    // must be removed explicitly.
+    // Hard-delete user and dependent rows where necessary. This handles
+    // foreign-key constraints by updating dependent columns first, then
+    // removing rows that reference the user, and finally deleting the user.
     await db.transaction(async (tx) => {
-      // remove messages sent by the user
-      await tx.delete(messageReceipts).where(eq(messageReceipts.userId, id));
+      // 1) Clear references from conversations where this user is the creator
+      await tx.execute(sql`UPDATE conversations SET created_by_id = NULL WHERE created_by_id = ${id}`);
+
+      // 2) Clear conversation.last_message_id if it points to messages that will be deleted
+      await tx.execute(sql`UPDATE conversations SET last_message_id = NULL WHERE last_message_id IN (SELECT id FROM messages WHERE sender_id = ${id})`);
+
+      // 3) Delete receipts associated with messages that will be removed OR receipts owned by the user
+      await tx.execute(sql`DELETE FROM message_receipts WHERE message_id IN (SELECT id FROM messages WHERE sender_id = ${id}) OR user_id = ${id}`);
+
+      // 4) Delete messages sent by the user
       await tx.delete(messages).where(eq(messages.senderId, id));
 
-      // remove call participations and calls initiated by the user
+      // 5) Remove call participants and calls initiated by the user
       await tx.delete(callParticipants).where(eq(callParticipants.userId, id));
       await tx.delete(calls).where(eq(calls.initiatorId, id));
 
-      // remove conversation participations
+      // 6) Remove conversation participants entries for the user
       await tx.delete(conversationParticipants).where(eq(conversationParticipants.userId, id));
 
-      // finally remove the user record
+      // 7) Remove any conversations that now have no participants
+      // Also remove direct conversations that ended up with fewer than 2 participants
+      await tx.execute(sql`
+        DELETE FROM conversations
+        WHERE id NOT IN (SELECT conversation_id FROM conversation_participants)
+        OR (
+          type = 'direct' AND id IN (
+            SELECT conversation_id FROM conversation_participants GROUP BY conversation_id HAVING COUNT(*) < 2
+          )
+        )
+      `);
+
+      // 8) Remove sessions referencing this user (passport session structure)
+      // Attempt to delete sessions where the serialized session contains passport.user === id
+      try {
+        await tx.execute(sql`DELETE FROM sessions WHERE (sess -> 'passport' ->> 'user') = ${id}`);
+      } catch (e) {
+        // Fallback: best-effort delete by text match (less safe but avoids orphan sessions)
+        await tx.execute(sql`DELETE FROM sessions WHERE sess::text LIKE ${sql.raw("'" + ('%"' + id + '"%') + "'")}`);
+      }
+
+      // 9) Finally remove the user record
       await tx.delete(users).where(eq(users.id, id));
     });
   }

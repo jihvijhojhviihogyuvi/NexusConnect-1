@@ -211,7 +211,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ message: "Not allowed in production" });
     }
     try {
-      await storage.deleteUser(req.params.id);
+      const userId = req.params.id as string;
+
+      // Gather conversation ids and remaining participant ids to notify after deletion
+      const convs = await storage.getUserConversations(userId);
+      const notifyList: { conversationId: string; otherUserIds: string[] }[] = convs.map((c) => ({
+        conversationId: c.id,
+        otherUserIds: c.participants.map((p) => p.userId).filter((id) => id !== userId),
+      }));
+
+      // If user is connected via websocket, close their connection to 'kick' them
+      const client = clients.get(userId);
+      if (client) {
+        try {
+          client.close();
+        } catch (e) {
+          try {
+            client.terminate?.();
+          } catch {}
+        }
+        clients.delete(userId);
+      }
+
+      // Perform DB deletion (handles dependent rows)
+      await storage.deleteUser(userId);
+
+      // Notify remaining participants that conversations were removed/changed
+      for (const n of notifyList) {
+        if (n.otherUserIds.length > 0) {
+          broadcastToUsers(n.otherUserIds, "conversation.deleted", { id: n.conversationId });
+        }
+      }
+
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting user:", error);
