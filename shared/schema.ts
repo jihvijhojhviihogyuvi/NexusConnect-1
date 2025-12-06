@@ -155,6 +155,18 @@ export const callParticipants = pgTable("call_participants", {
   index("IDX_call_participants_user").on(table.userId),
 ]);
 
+// Message reactions
+export const messageReactions = pgTable("message_reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  emoji: varchar("emoji").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("IDX_reactions_message").on(table.messageId),
+  index("IDX_reactions_user").on(table.userId),
+]);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   participations: many(conversationParticipants),
@@ -234,6 +246,17 @@ export const callParticipantsRelations = relations(callParticipants, ({ one }) =
   }),
 }));
 
+export const messageReactionsRelations = relations(messageReactions, ({ one }) => ({
+  message: one(messages, {
+    fields: [messageReactions.messageId],
+    references: [messages.id],
+  }),
+  user: one(users, {
+    fields: [messageReactions.userId],
+    references: [users.id],
+  }),
+}));
+
 // Zod Schemas for validation
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
 export const updateUserSchema = insertUserSchema.partial();
@@ -273,6 +296,8 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export type MessageReceipt = typeof messageReceipts.$inferSelect;
 
+export type MessageReaction = typeof messageReactions.$inferSelect;
+
 export type Call = typeof calls.$inferSelect;
 export type InsertCall = z.infer<typeof insertCallSchema>;
 
@@ -292,6 +317,7 @@ export type ConversationWithDetails = Conversation & {
 export type MessageWithSender = Message & {
   sender: User;
   replyTo?: Message & { sender: User };
+  reactions?: { emoji: string; count: number; userReacted: boolean }[];
 };
 
 export type CallWithDetails = Call & {

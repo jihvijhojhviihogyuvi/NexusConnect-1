@@ -471,6 +471,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Message reactions
+  app.post("/api/messages/:id/reactions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const { emoji } = req.body;
+      const messageId = req.params.id;
+
+      if (!emoji || emoji.length === 0) {
+        return res.status(400).json({ message: "Emoji is required" });
+      }
+
+      const message = await storage.getMessage(messageId);
+      if (!message) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+
+      await storage.addReaction(messageId, userId, emoji);
+
+      // Broadcast reaction update
+      const reactions = await storage.getMessageReactions(messageId);
+      await broadcastToConversation(message.conversationId, "message-reactions-updated", {
+        messageId,
+        reactions,
+      });
+
+      res.status(200).json({ emoji, added: true });
+    } catch (error) {
+      console.error("Error adding reaction:", error);
+      res.status(500).json({ message: "Failed to add reaction" });
+    }
+  });
+
+  app.delete("/api/messages/:id/reactions/:emoji", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const { emoji } = req.params;
+      const messageId = req.params.id;
+
+      const message = await storage.getMessage(messageId);
+      if (!message) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+
+      await storage.removeReaction(messageId, userId, emoji);
+
+      // Broadcast reaction update
+      const reactions = await storage.getMessageReactions(messageId);
+      await broadcastToConversation(message.conversationId, "message-reactions-updated", {
+        messageId,
+        reactions,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing reaction:", error);
+      res.status(500).json({ message: "Failed to remove reaction" });
+    }
+  });
+
   // Call routes
   app.post("/api/calls", isAuthenticated, async (req: any, res) => {
     try {
@@ -651,6 +710,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                   ...payload,
                 }, userId);
               }
+            }
+            break;
+
+          case "typing":
+            if (userId && payload.conversationId) {
+              const isTyping = payload.isTyping === true;
+              await storage.updateTypingStatus(payload.conversationId, userId, isTyping);
+              
+              await broadcastToConversation(payload.conversationId, "user-typing", {
+                userId,
+                isTyping,
+              }, userId);
             }
             break;
 

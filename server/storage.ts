@@ -4,6 +4,7 @@ import {
   conversationParticipants,
   messages,
   messageReceipts,
+  messageReactions,
   calls,
   callParticipants,
   type User,
@@ -14,6 +15,7 @@ import {
   type InsertConversationParticipant,
   type Message,
   type InsertMessage,
+  type MessageReaction,
   type Call,
   type InsertCall,
   type CallParticipant,
@@ -66,6 +68,12 @@ export interface IStorage {
   addCallParticipant(callId: string, userId: string): Promise<CallParticipant>;
   updateCallParticipant(callId: string, userId: string, data: Partial<CallParticipant>): Promise<void>;
   removeCallParticipant(callId: string, userId: string): Promise<void>;
+
+  // Message reactions
+  addReaction(messageId: string, userId: string, emoji: string): Promise<MessageReaction>;
+  removeReaction(messageId: string, userId: string, emoji: string): Promise<void>;
+  getMessageReactions(messageId: string): Promise<{ emoji: string; count: number; userReacted: boolean }[]>;
+
   // Admin / maintenance
   deleteUser(id: string): Promise<void>;
   getAllUsersAdmin(): Promise<User[]>;
@@ -386,7 +394,10 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    return { ...message, sender, replyTo };
+    // Get reactions for this message
+    const reactions = await this.getMessageReactions(id);
+
+    return { ...message, sender, replyTo, reactions };
   }
 
   async getConversationMessages(
@@ -628,6 +639,60 @@ export class DatabaseStorage implements IStorage {
       if (details) result.push(details);
     }
     return result;
+  }
+
+  // Message reactions
+  async addReaction(messageId: string, userId: string, emoji: string): Promise<MessageReaction> {
+    // Check if user already reacted with this emoji
+    const existing = await db
+      .select()
+      .from(messageReactions)
+      .where(
+        and(
+          eq(messageReactions.messageId, messageId),
+          eq(messageReactions.userId, userId),
+          eq(messageReactions.emoji, emoji)
+        )
+      );
+
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    const [reaction] = await db
+      .insert(messageReactions)
+      .values({ messageId, userId, emoji })
+      .returning();
+    return reaction;
+  }
+
+  async removeReaction(messageId: string, userId: string, emoji: string): Promise<void> {
+    await db
+      .delete(messageReactions)
+      .where(
+        and(
+          eq(messageReactions.messageId, messageId),
+          eq(messageReactions.userId, userId),
+          eq(messageReactions.emoji, emoji)
+        )
+      );
+  }
+
+  async getMessageReactions(messageId: string): Promise<{ emoji: string; count: number; userReacted: boolean }[]> {
+    const reactions = await db
+      .select({
+        emoji: messageReactions.emoji,
+        count: sql<number>`count(*)`.as("count"),
+      })
+      .from(messageReactions)
+      .where(eq(messageReactions.messageId, messageId))
+      .groupBy(messageReactions.emoji);
+
+    return reactions.map((r) => ({
+      emoji: r.emoji,
+      count: Number(r.count) || 0,
+      userReacted: false, // Will be set by caller if needed
+    }));
   }
 }
 
