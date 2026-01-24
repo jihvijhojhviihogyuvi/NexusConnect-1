@@ -1,6 +1,14 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { memoryManager } from "./memoryManager";
+import { pool } from "./db";
+
+// Memory optimization: Set Node.js memory limits
+if (process.env.NODE_ENV === "production") {
+  // Limit Node.js to 256MB max old space size
+  process.env.NODE_OPTIONS = "--max-old-space-size=256";
+}
 
 // Ensure .env from project root is loaded even if cwd differs
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -87,6 +95,10 @@ app.use((req, res, next) => {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
+
+  // Start memory monitoring
+  memoryManager.startMonitoring(pool);
+  log("Memory monitoring started - will optimize at 400MB, revert at 350MB");
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

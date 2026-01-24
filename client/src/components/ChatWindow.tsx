@@ -45,6 +45,9 @@ export function ChatWindow({
 
   const { data: messages, isLoading: messagesLoading } = useQuery<MessageWithSender[]>({
     queryKey: ["/api/conversations", conversationId, "messages"],
+    // Memory optimization: Limit message cache and enable garbage collection
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
   const sendMessageMutation = useMutation({

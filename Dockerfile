@@ -14,6 +14,8 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Memory optimization: Set Node.js memory limits
+ENV NODE_OPTIONS="--max-old-space-size=256"
 # copy only artifacts we need for runtime
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules

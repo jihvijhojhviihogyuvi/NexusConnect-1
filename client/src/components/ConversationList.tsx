@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Plus, MessageCircle, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
