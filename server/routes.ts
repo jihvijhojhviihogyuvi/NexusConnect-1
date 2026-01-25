@@ -8,6 +8,9 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import passport from "passport";
+import { memoryManager } from "./memoryManager";
+import { dynamicUploadManager } from "./dynamicUploadManager";
+import memoryStatusRouter from "./memoryStatus";
 
 // File upload configuration
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -23,7 +26,7 @@ const upload = multer({
       cb(null, uniqueSuffix + path.extname(file.originalname));
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // Reduced to 5MB for memory optimization
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -36,17 +39,36 @@ const upload = multer({
   },
 });
 
-// WebSocket clients map
+// WebSocket clients map with connection limits
 const clients = new Map<string, WebSocket>();
+const MAX_CONNECTIONS_PER_USER = 2; // Memory optimization: Limit concurrent connections
 
 // Broadcast to specific users
 function broadcastToUsers(userIds: string[], type: string, payload: any) {
   userIds.forEach((userId) => {
     const client = clients.get(userId);
     if (client && client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ type, payload }));
+      try {
+        client.send(JSON.stringify({ type, payload }));
+      } catch (error) {
+        console.error(`Error sending to user ${userId}:`, error);
+        cleanupUserConnection(userId);
+      }
     }
   });
+}
+
+// Memory optimization: Cleanup user connection
+function cleanupUserConnection(userId: string) {
+  const client = clients.get(userId);
+  if (client) {
+    try {
+      client.close();
+    } catch (error) {
+      console.error(`Error closing connection for user ${userId}:`, error);
+    }
+    clients.delete(userId);
+  }
 }
 
 // Broadcast to conversation participants
@@ -568,6 +590,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(500).json({ message: "Failed to update call" });
     }
   });
+
+  // Automatic file cleanup system - Memory optimization
+  const cleanupOldFiles = () => {
+    const now = Date.now();
+    const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+    
+    fs.readdir(uploadDir, (err, files) => {
+      if (err) {
+        console.error("Error reading upload directory:", err);
+        return;
+      }
+      
+      files.forEach(file => {
+        const filePath = path.join(uploadDir, file);
+        fs.stat(filePath, (err, stats) => {
+          if (err) {
+            console.error(`Error getting stats for ${file}:`, err);
+            return;
+          }
+          
+          if (now - stats.mtime.getTime() > maxAge) {
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error(`Error deleting old file ${file}:`, err);
+              } else {
+                console.log(`Deleted old file: ${file}`);
+              }
+            });
+          }
+        });
+      });
+    });
+  };
+
+  // Run cleanup every hour
+  setInterval(cleanupOldFiles, 60 * 60 * 1000);
+  // Run cleanup immediately on startup
+  cleanupOldFiles();
 
   // WebSocket server for real-time communication
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
