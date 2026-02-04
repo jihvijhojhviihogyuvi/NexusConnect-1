@@ -326,6 +326,38 @@
           </div>
         </div>
       </section>
+
+      <section class="card">
+        <h2>4. Run Inference</h2>
+        <div class="grid">
+          <label>
+            Prompt
+            <textarea id="inferencePrompt" rows="4">Write a two-sentence summary about WebGPU training.</textarea>
+          </label>
+          <div class="row">
+            <label style="flex: 1;">
+              Max tokens
+              <input type="number" id="maxTokens" value="48" min="8" max="256" />
+            </label>
+            <label style="flex: 1;">
+              Temperature
+              <input type="number" id="temperature" value="0.7" min="0.1" max="2" step="0.1" />
+            </label>
+          </div>
+          <div class="row">
+            <button id="runInferenceBtn">Run inference</button>
+            <button id="clearInferenceBtn" class="secondary">Clear output</button>
+          </div>
+          <label>
+            Output
+            <textarea id="inferenceOutput" rows="6" readonly></textarea>
+          </label>
+          <p class="muted" style="margin: 0;">
+            This demo runs a small WebGPU-powered toy inference loop seeded by your prompt and
+            downloaded weights. Replace with a real WebGPU runtime to generate full model outputs.
+          </p>
+        </div>
+      </section>
     </main>
 
     <footer>
@@ -359,6 +391,12 @@
       const hfDownloadBtn = document.getElementById("hfDownloadBtn");
       const hfStatus = document.getElementById("hfStatus");
       const hfDownloadProgress = document.getElementById("hfDownloadProgress");
+      const inferencePrompt = document.getElementById("inferencePrompt");
+      const maxTokensInput = document.getElementById("maxTokens");
+      const temperatureInput = document.getElementById("temperature");
+      const runInferenceBtn = document.getElementById("runInferenceBtn");
+      const clearInferenceBtn = document.getElementById("clearInferenceBtn");
+      const inferenceOutput = document.getElementById("inferenceOutput");
 
       const state = {
         device: null,
@@ -369,11 +407,23 @@
         lossBuffer: null,
         lossReadBuffer: null,
         uniformBuffer: null,
+        inferencePipeline: null,
+        inferenceBindGroup: null,
+        inferenceUniformBuffer: null,
+        logitsBuffer: null,
+        logitsReadBuffer: null,
         running: false,
         paused: false,
         step: 0,
         totalSteps: 300,
       };
+
+      const inferenceVocab = [
+        "WebGPU", "training", "fine-tune", "model", "weights", "gradient",
+        "optimizer", "batch", "epoch", "token", "memory", "kernel", "attention",
+        "LoRA", "GPU", "browser", "dataset", "loss", "step", "compute",
+        "performance", "latency", "throughput", "pipeline", "adapter", "shader",
+      ];
 
       const log = (message) => {
         const entry = document.createElement("div");
@@ -425,6 +475,15 @@
       const fetchHfDatasetSample = async (dataset, token) => {
         const base = `https://datasets-server.huggingface.co/rows?dataset=${encodeURIComponent(dataset)}&config=default&split=train&offset=0&length=1`;
         return fetchHfJson(base, token);
+      };
+
+      const hashPrompt = (text) => {
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i += 1) {
+          hash ^= text.charCodeAt(i);
+          hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
       };
 
       const selectWeightFile = (modelInfo) => {
@@ -571,6 +630,10 @@
 
       hfImportBtn.addEventListener("click", updateHfMetadata);
       hfDownloadBtn.addEventListener("click", downloadHfWeights);
+      runInferenceBtn.addEventListener("click", runInference);
+      clearInferenceBtn.addEventListener("click", () => {
+        inferenceOutput.value = "";
+      });
 
       const setupWebGPU = async () => {
         if (!navigator.gpu) {
@@ -624,6 +687,36 @@
           compute: { module, entryPoint: "main" },
         });
 
+        const inferenceShader = `
+          struct Params {
+            seed: u32,
+            vocabSize: u32,
+            pad0: u32,
+            pad1: u32,
+          };
+
+          @group(0) @binding(0) var<storage, read> weights: array<f32>;
+          @group(0) @binding(1) var<storage, read_write> logits: array<f32>;
+          @group(0) @binding(2) var<uniform> params: Params;
+
+          @compute @workgroup_size(32)
+          fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+            let idx = gid.x;
+            if (idx >= params.vocabSize) {
+              return;
+            }
+            let weight = weights[idx % arrayLength(&weights)];
+            let seed = f32(params.seed + idx * 31u);
+            logits[idx] = sin(seed * 0.0001) + weight * 0.5;
+          }
+        `;
+
+        const inferenceModule = state.device.createShaderModule({ code: inferenceShader });
+        state.inferencePipeline = state.device.createComputePipeline({
+          layout: "auto",
+          compute: { module: inferenceModule, entryPoint: "main" },
+        });
+
         const numWeights = 4096;
         const bufferSize = numWeights * Float32Array.BYTES_PER_ELEMENT;
         const weights = new Float32Array(numWeights).map(() => Math.random() * 0.02 - 0.01);
@@ -648,6 +741,18 @@
           size: 16,
           usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
+        state.inferenceUniformBuffer = state.device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        state.logitsBuffer = state.device.createBuffer({
+          size: inferenceVocab.length * Float32Array.BYTES_PER_ELEMENT,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        });
+        state.logitsReadBuffer = state.device.createBuffer({
+          size: inferenceVocab.length * Float32Array.BYTES_PER_ELEMENT,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+        });
 
         state.device.queue.writeBuffer(state.weightsBuffer, 0, weights);
 
@@ -658,6 +763,15 @@
             { binding: 1, resource: { buffer: state.gradsBuffer } },
             { binding: 2, resource: { buffer: state.lossBuffer } },
             { binding: 3, resource: { buffer: state.uniformBuffer } },
+          ],
+        });
+
+        state.inferenceBindGroup = state.device.createBindGroup({
+          layout: state.inferencePipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: state.weightsBuffer } },
+            { binding: 1, resource: { buffer: state.logitsBuffer } },
+            { binding: 2, resource: { buffer: state.inferenceUniformBuffer } },
           ],
         });
       };
@@ -718,6 +832,53 @@
         updateProgress();
         lossMetric.textContent = "-";
         timeMetric.textContent = "0 ms";
+      };
+
+      const runInference = async () => {
+        if (!state.device || !state.inferencePipeline) {
+          log("WebGPU not ready. Cannot run inference.");
+          return;
+        }
+        const prompt = inferencePrompt.value.trim();
+        const maxTokens = Math.max(8, Number(maxTokensInput.value || 48));
+        const temperature = Math.max(0.1, Number(temperatureInput.value || 0.7));
+        const seed = hashPrompt(prompt);
+
+        setHfStatus("Running inference...", "info");
+        log("Inference started.");
+
+        const uniformData = new Uint32Array([seed, inferenceVocab.length, 0, 0]);
+        state.device.queue.writeBuffer(state.inferenceUniformBuffer, 0, uniformData.buffer);
+
+        const encoder = state.device.createCommandEncoder();
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(state.inferencePipeline);
+        pass.setBindGroup(0, state.inferenceBindGroup);
+        pass.dispatchWorkgroups(Math.ceil(inferenceVocab.length / 32));
+        pass.end();
+        encoder.copyBufferToBuffer(
+          state.logitsBuffer,
+          0,
+          state.logitsReadBuffer,
+          0,
+          inferenceVocab.length * Float32Array.BYTES_PER_ELEMENT,
+        );
+        state.device.queue.submit([encoder.finish()]);
+
+        await state.logitsReadBuffer.mapAsync(GPUMapMode.READ);
+        const logits = new Float32Array(state.logitsReadBuffer.getMappedRange());
+        const tokens = [];
+        for (let i = 0; i < maxTokens; i += 1) {
+          const idx = i % logits.length;
+          const scaled = logits[idx] / temperature;
+          const nextIndex = Math.abs(Math.floor((scaled + 1) * 7 + idx)) % inferenceVocab.length;
+          tokens.push(inferenceVocab[nextIndex]);
+        }
+        state.logitsReadBuffer.unmap();
+
+        inferenceOutput.value = `${prompt}\n\n${tokens.join(" ")}`;
+        log("Inference complete.");
+        setHfStatus("Inference complete.", "info");
       };
 
       document.getElementById("startBtn").addEventListener("click", () => {
