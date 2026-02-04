@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGPU Fine-Tune Studio (Local)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+        --bg: #0c111b;
+        --panel: #141b2b;
+        --panel-2: #1b2438;
+        --text: #e6edf7;
+        --muted: #9fb0c7;
+        --accent: #6aa3ff;
+        --accent-2: #4cd7b0;
+        --warning: #f8b04c;
+        --danger: #ff6b6b;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top, #1a2440 0%, var(--bg) 42%);
+        color: var(--text);
+      }
+      header {
+        padding: 40px 8vw 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .badge {
+        background: rgba(106, 163, 255, 0.16);
+        color: var(--accent);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 12px 0 8px;
+        font-size: clamp(28px, 4vw, 44px);
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 24px;
+        padding: 0 8vw 48px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid rgba(106, 163, 255, 0.2);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+      }
+      .card h2 {
+        margin-top: 0;
+        font-size: 18px;
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      input,
+      select,
+      textarea {
+        background: var(--panel-2);
+        border: 1px solid rgba(159, 176, 199, 0.25);
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: var(--text);
+        font-size: 14px;
+      }
+      input[type="range"] {
+        padding: 0;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      button {
+        background: var(--accent);
+        color: #081226;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid rgba(159, 176, 199, 0.4);
+      }
+      button.warn {
+        background: var(--warning);
+        color: #1e1402;
+      }
+      button.danger {
+        background: var(--danger);
+        color: #2a0b0b;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--danger);
+      }
+      .dot.ready {
+        background: var(--accent-2);
+      }
+      .progress {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(159, 176, 199, 0.2);
+        overflow: hidden;
+      }
+      .progress span {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      }
+      .console {
+        background: #0a0f19;
+        border-radius: 12px;
+        padding: 14px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        height: 200px;
+        overflow: auto;
+        border: 1px solid rgba(159, 176, 199, 0.2);
+      }
+      .pill {
+        background: rgba(76, 215, 176, 0.12);
+        color: var(--accent-2);
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 12px;
+      }
+      .metric {
+        background: var(--panel-2);
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(159, 176, 199, 0.18);
+      }
+      .metric strong {
+        display: block;
+        font-size: 18px;
+      }
+      footer {
+        padding: 0 8vw 40px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <span class="badge">Local WebGPU Training Sandbox</span>
+        <h1>Fine-tune models directly in your browser.</h1>
+        <p>
+          This offline HTML prototype mirrors the WebLLM experience but focuses on
+          <strong>training workflows</strong>: data prep, LoRA settings, and GPU-driven
+          training loops.
+        </p>
+      </div>
+      <div class="status">
+        <div class="dot" id="gpuDot"></div>
+        <span id="gpuStatus">Checking WebGPU support…</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="card">
+        <h2>1. Base Model + Dataset</h2>
+        <div class="grid">
+          <div class="card" style="background: rgba(15, 22, 36, 0.9); border-color: rgba(106, 163, 255, 0.12);">
+            <h3 style="margin-top: 0; font-size: 16px;">Hugging Face import</h3>
+            <label>
+              Model repo (e.g., meta-llama/Llama-2-7b-hf)
+              <input type="text" id="hfModelRepo" placeholder="org/model-name" />
+            </label>
+            <label>
+              Dataset repo (e.g., tatsu-lab/alpaca)
+              <input type="text" id="hfDatasetRepo" placeholder="org/dataset-name" />
+            </label>
+            <label>
+              Access token (optional, stored locally)
+              <input type="password" id="hfToken" placeholder="hf_..." />
+            </label>
+            <div class="row">
+              <button id="hfImportBtn" class="secondary">Fetch HF metadata</button>
+              <button id="hfDownloadBtn" class="warn">Download model weights</button>
+              <span class="pill" id="hfStatus">Waiting for Hugging Face input</span>
+            </div>
+            <div class="progress" style="margin-top: 10px;">
+              <span id="hfDownloadProgress"></span>
+            </div>
+            <p class="muted" style="margin: 0;">
+              This demo can download full weight files from the Hugging Face Hub. Large downloads
+              may take time and require adequate disk space.
+            </p>
+          </div>
+          <label>
+            Base model checkpoint (.safetensors / .bin)
+            <input type="file" id="modelFile" />
+          </label>
+          <label>
+            Training dataset (.jsonl, .csv)
+            <input type="file" id="dataFile" />
+          </label>
+          <label>
+            Prompt template
+            <textarea id="promptTemplate" rows="4">You are a helpful assistant.\nUser: {{input}}\nAssistant: {{output}}</textarea>
+          </label>
+          <div class="row">
+            <span class="pill" id="datasetMeta">No dataset loaded</span>
+            <span class="pill" id="modelMeta">No model loaded</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2. Training Controls</h2>
+        <div class="grid">
+          <div class="row">
+            <label style="flex: 1;">
+              Epochs
+              <input type="number" id="epochs" value="3" min="1" max="50" />
+            </label>
+            <label style="flex: 1;">
+              Batch size
+              <input type="number" id="batchSize" value="4" min="1" max="64" />
+            </label>
+          </div>
+          <div class="row">
+            <label style="flex: 1;">
+              Learning rate
+              <input type="number" id="learningRate" value="0.0003" step="0.0001" />
+            </label>
+            <label style="flex: 1;">
+              LoRA rank
+              <input type="number" id="loraRank" value="8" min="2" max="64" />
+            </label>
+          </div>
+          <label>
+            Context length
+            <input type="range" id="context" min="256" max="4096" step="256" value="1024" />
+            <span class="muted" id="contextValue">1024 tokens</span>
+          </label>
+          <div class="row">
+            <button id="startBtn">Start fine-tune</button>
+            <button id="pauseBtn" class="secondary">Pause</button>
+            <button id="stopBtn" class="danger">Stop</button>
+          </div>
+          <div class="progress">
+            <span id="progressBar"></span>
+          </div>
+          <div class="metrics">
+            <div class="metric">
+              <span class="muted">Step</span>
+              <strong id="stepMetric">0</strong>
+            </div>
+            <div class="metric">
+              <span class="muted">Loss</span>
+              <strong id="lossMetric">-</strong>
+            </div>
+            <div class="metric">
+              <span class="muted">GPU time</span>
+              <strong id="timeMetric">0 ms</strong>
+            </div>
+            <div class="metric">
+              <span class="muted">Memory est.</span>
+              <strong id="memoryMetric">-</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3. WebGPU Training Console</h2>
+        <div class="grid">
+          <div class="console" id="console"></div>
+          <div class="row">
+            <button id="exportBtn" class="warn">Export LoRA delta</button>
+            <button id="resetBtn" class="secondary">Reset session</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        This demo runs a tiny WebGPU compute loop to mimic training steps. For full
+        LLM fine-tuning, integrate optimized kernels (FlashAttention, fused AdamW)
+        and shard weights across GPU buffers.
+      </p>
+      <p>
+        Learn more about WebGPU: <a href="https://developer.mozilla.org/docs/Web/API/WebGPU_API" target="_blank">MDN docs</a>.
+      </p>
+    </footer>
+
+    <script>
+      const gpuDot = document.getElementById("gpuDot");
+      const gpuStatus = document.getElementById("gpuStatus");
+      const consoleEl = document.getElementById("console");
+      const progressBar = document.getElementById("progressBar");
+      const stepMetric = document.getElementById("stepMetric");
+      const lossMetric = document.getElementById("lossMetric");
+      const timeMetric = document.getElementById("timeMetric");
+      const memoryMetric = document.getElementById("memoryMetric");
+      const contextInput = document.getElementById("context");
+      const contextValue = document.getElementById("contextValue");
+      const datasetMeta = document.getElementById("datasetMeta");
+      const modelMeta = document.getElementById("modelMeta");
+      const hfModelRepo = document.getElementById("hfModelRepo");
+      const hfDatasetRepo = document.getElementById("hfDatasetRepo");
+      const hfTokenInput = document.getElementById("hfToken");
+      const hfImportBtn = document.getElementById("hfImportBtn");
+      const hfDownloadBtn = document.getElementById("hfDownloadBtn");
+      const hfStatus = document.getElementById("hfStatus");
+      const hfDownloadProgress = document.getElementById("hfDownloadProgress");
+
+      const state = {
+        device: null,
+        pipeline: null,
+        bindGroup: null,
+        weightsBuffer: null,
+        gradsBuffer: null,
+        lossBuffer: null,
+        lossReadBuffer: null,
+        uniformBuffer: null,
+        running: false,
+        paused: false,
+        step: 0,
+        totalSteps: 300,
+      };
+
+      const log = (message) => {
+        const entry = document.createElement("div");
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        consoleEl.appendChild(entry);
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      };
+
+      const updateContext = () => {
+        contextValue.textContent = `${contextInput.value} tokens`;
+      };
+
+      const estimateMemory = () => {
+        const base = Number(contextInput.value) * Number(document.getElementById("batchSize").value || 1);
+        const lora = Number(document.getElementById("loraRank").value || 8) * 4;
+        memoryMetric.textContent = `${Math.round(base * 0.012 + lora)} MB`;
+      };
+
+      const updateDatasetMeta = (file, label) => {
+        if (!file) {
+          label.textContent = label === datasetMeta ? "No dataset loaded" : "No model loaded";
+          return;
+        }
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        label.textContent = `${file.name} (${sizeMb} MB)`;
+      };
+
+      const setHfStatus = (message, tone = "info") => {
+        hfStatus.textContent = message;
+        hfStatus.style.color = tone === "warn" ? "#f8b04c" : tone === "error" ? "#ff6b6b" : "#4cd7b0";
+      };
+
+      const setHfDownloadProgress = (percent) => {
+        const clamped = Math.min(100, Math.max(0, percent));
+        hfDownloadProgress.style.width = `${clamped}%`;
+      };
+
+      const fetchHfJson = async (url, token) => {
+        const response = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(`HTTP ${response.status}: ${detail}`);
+        }
+        return response.json();
+      };
+
+      const fetchHfDatasetSample = async (dataset, token) => {
+        const base = `https://datasets-server.huggingface.co/rows?dataset=${encodeURIComponent(dataset)}&config=default&split=train&offset=0&length=1`;
+        return fetchHfJson(base, token);
+      };
+
+      const selectWeightFile = (modelInfo) => {
+        const siblings = modelInfo.siblings || [];
+        const preferred = siblings.find((file) => file.rfilename.endsWith(".safetensors"));
+        if (preferred) {
+          return preferred.rfilename;
+        }
+        const fallback = siblings.find((file) => file.rfilename.endsWith(".bin"));
+        return fallback?.rfilename || null;
+      };
+
+      const downloadFile = async (url, token, onProgress) => {
+        const response = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(`HTTP ${response.status}: ${detail}`);
+        }
+
+        const contentLength = Number(response.headers.get("Content-Length") || 0);
+        const reader = response.body?.getReader();
+        if (!reader) {
+          const blob = await response.blob();
+          onProgress?.(100);
+          return blob;
+        }
+
+        const chunks = [];
+        let received = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          chunks.push(value);
+          received += value.length;
+          if (contentLength) {
+            onProgress?.((received / contentLength) * 100);
+          }
+        }
+        onProgress?.(100);
+        return new Blob(chunks);
+      };
+
+      const updateHfMetadata = async () => {
+        const modelRepo = hfModelRepo.value.trim();
+        const datasetRepo = hfDatasetRepo.value.trim();
+        const token = hfTokenInput.value.trim();
+
+        if (!modelRepo && !datasetRepo) {
+          setHfStatus("Enter a model or dataset repo to fetch.", "warn");
+          return;
+        }
+
+        setHfStatus("Fetching Hugging Face metadata...");
+        log("Fetching Hugging Face metadata...");
+
+        try {
+          if (modelRepo) {
+            const modelInfo = await fetchHfJson(`https://huggingface.co/api/models/${modelRepo}`, token);
+            modelMeta.textContent = `${modelInfo.modelId} • ${modelInfo.pipeline_tag || "unknown task"}`;
+            log(`Model metadata loaded: ${modelInfo.modelId}`);
+          }
+
+          if (datasetRepo) {
+            const datasetInfo = await fetchHfJson(`https://huggingface.co/api/datasets/${datasetRepo}`, token);
+            datasetMeta.textContent = `${datasetInfo.id} • ${datasetInfo.downloads || 0} downloads`;
+            log(`Dataset metadata loaded: ${datasetInfo.id}`);
+
+            try {
+              const sample = await fetchHfDatasetSample(datasetRepo, token);
+              const sampleRow = sample.rows?.[0]?.row || {};
+              const preview = JSON.stringify(sampleRow).slice(0, 160);
+              log(`Sample row: ${preview}${preview.length >= 160 ? "..." : ""}`);
+            } catch (error) {
+              log(`Dataset sample unavailable: ${error.message}`);
+            }
+          }
+
+          setHfStatus("Hugging Face metadata loaded.", "info");
+        } catch (error) {
+          setHfStatus("Failed to load Hugging Face data.", "error");
+          log(`Hugging Face fetch failed: ${error.message}`);
+        }
+      };
+
+      const downloadHfWeights = async () => {
+        const modelRepo = hfModelRepo.value.trim();
+        const token = hfTokenInput.value.trim();
+        if (!modelRepo) {
+          setHfStatus("Enter a model repo before downloading.", "warn");
+          return;
+        }
+
+        setHfStatus("Resolving model weights...");
+        log("Resolving model weights from Hugging Face...");
+        setHfDownloadProgress(0);
+
+        try {
+          const modelInfo = await fetchHfJson(`https://huggingface.co/api/models/${modelRepo}`, token);
+          const weightFile = selectWeightFile(modelInfo);
+          if (!weightFile) {
+            throw new Error("No .safetensors or .bin file found in the model repo.");
+          }
+
+          const downloadUrl = `https://huggingface.co/${modelRepo}/resolve/main/${weightFile}`;
+          setHfStatus(`Downloading ${weightFile}...`);
+          const blob = await downloadFile(downloadUrl, token, (percent) => {
+            setHfDownloadProgress(percent);
+          });
+
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = weightFile;
+          link.click();
+          URL.revokeObjectURL(link.href);
+          modelMeta.textContent = `${modelRepo} • ${weightFile}`;
+          log(`Downloaded weight file: ${weightFile}`);
+          setHfStatus("Download complete.", "info");
+        } catch (error) {
+          setHfStatus("Failed to download weights.", "error");
+          log(`Weight download failed: ${error.message}`);
+          setHfDownloadProgress(0);
+        }
+      };
+
+      contextInput.addEventListener("input", () => {
+        updateContext();
+        estimateMemory();
+      });
+
+      document.getElementById("batchSize").addEventListener("input", estimateMemory);
+      document.getElementById("loraRank").addEventListener("input", estimateMemory);
+
+      document.getElementById("modelFile").addEventListener("change", (event) => {
+        updateDatasetMeta(event.target.files[0], modelMeta);
+      });
+
+      document.getElementById("dataFile").addEventListener("change", (event) => {
+        updateDatasetMeta(event.target.files[0], datasetMeta);
+      });
+
+      hfImportBtn.addEventListener("click", updateHfMetadata);
+      hfDownloadBtn.addEventListener("click", downloadHfWeights);
+
+      const setupWebGPU = async () => {
+        if (!navigator.gpu) {
+          gpuStatus.textContent = "WebGPU not supported in this browser.";
+          log("WebGPU unavailable. Use Chrome/Edge 113+ with WebGPU enabled.");
+          return;
+        }
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+          gpuStatus.textContent = "No WebGPU adapter found.";
+          log("No WebGPU adapter available.");
+          return;
+        }
+        state.device = await adapter.requestDevice();
+        gpuDot.classList.add("ready");
+        gpuStatus.textContent = "WebGPU ready (local compute).";
+        log("WebGPU device initialized.");
+
+        const shader = `
+          struct Params {
+            lr: f32,
+            step: u32,
+            pad0: u32,
+            pad1: u32,
+          };
+
+          @group(0) @binding(0) var<storage, read_write> weights: array<f32>;
+          @group(0) @binding(1) var<storage, read_write> grads: array<f32>;
+          @group(0) @binding(2) var<storage, read_write> loss: array<f32>;
+          @group(0) @binding(3) var<uniform> params: Params;
+
+          @compute @workgroup_size(64)
+          fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+            let idx = gid.x;
+            if (idx >= arrayLength(&weights)) {
+              return;
+            }
+            let w = weights[idx];
+            let g = w * 0.01 + f32(params.step % 97u) * 0.0001;
+            grads[idx] = g;
+            weights[idx] = w - params.lr * g;
+            if (idx == 0u) {
+              loss[0] = abs(g);
+            }
+          }
+        `;
+
+        const module = state.device.createShaderModule({ code: shader });
+        state.pipeline = state.device.createComputePipeline({
+          layout: "auto",
+          compute: { module, entryPoint: "main" },
+        });
+
+        const numWeights = 4096;
+        const bufferSize = numWeights * Float32Array.BYTES_PER_ELEMENT;
+        const weights = new Float32Array(numWeights).map(() => Math.random() * 0.02 - 0.01);
+
+        state.weightsBuffer = state.device.createBuffer({
+          size: bufferSize,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        state.gradsBuffer = state.device.createBuffer({
+          size: bufferSize,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        });
+        state.lossBuffer = state.device.createBuffer({
+          size: Float32Array.BYTES_PER_ELEMENT,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        });
+        state.lossReadBuffer = state.device.createBuffer({
+          size: Float32Array.BYTES_PER_ELEMENT,
+          usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+        });
+        state.uniformBuffer = state.device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        state.device.queue.writeBuffer(state.weightsBuffer, 0, weights);
+
+        state.bindGroup = state.device.createBindGroup({
+          layout: state.pipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: state.weightsBuffer } },
+            { binding: 1, resource: { buffer: state.gradsBuffer } },
+            { binding: 2, resource: { buffer: state.lossBuffer } },
+            { binding: 3, resource: { buffer: state.uniformBuffer } },
+          ],
+        });
+      };
+
+      const dispatchStep = async (step) => {
+        const lr = Number(document.getElementById("learningRate").value || 0.0003);
+        const uniformData = new Float32Array([lr, step, 0, 0]);
+        state.device.queue.writeBuffer(state.uniformBuffer, 0, uniformData.buffer);
+
+        const encoder = state.device.createCommandEncoder();
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(state.pipeline);
+        pass.setBindGroup(0, state.bindGroup);
+        pass.dispatchWorkgroups(Math.ceil(4096 / 64));
+        pass.end();
+
+        encoder.copyBufferToBuffer(state.lossBuffer, 0, state.lossReadBuffer, 0, Float32Array.BYTES_PER_ELEMENT);
+
+        state.device.queue.submit([encoder.finish()]);
+        await state.lossReadBuffer.mapAsync(GPUMapMode.READ);
+        const copyArray = new Float32Array(state.lossReadBuffer.getMappedRange());
+        const loss = copyArray[0];
+        state.lossReadBuffer.unmap();
+        return loss;
+      };
+
+      const updateProgress = () => {
+        const pct = Math.min(100, (state.step / state.totalSteps) * 100);
+        progressBar.style.width = `${pct}%`;
+        stepMetric.textContent = state.step;
+      };
+
+      const loop = async () => {
+        if (!state.running || state.paused) {
+          return;
+        }
+        const start = performance.now();
+        const loss = await dispatchStep(state.step + 1);
+        const elapsed = performance.now() - start;
+
+        state.step += 1;
+        lossMetric.textContent = loss.toFixed(6);
+        timeMetric.textContent = `${elapsed.toFixed(1)} ms`;
+        updateProgress();
+
+        if (state.step >= state.totalSteps) {
+          log("Training complete. Export your LoRA delta.");
+          state.running = false;
+          return;
+        }
+        requestAnimationFrame(loop);
+      };
+
+      const resetState = () => {
+        state.running = false;
+        state.paused = false;
+        state.step = 0;
+        updateProgress();
+        lossMetric.textContent = "-";
+        timeMetric.textContent = "0 ms";
+      };
+
+      document.getElementById("startBtn").addEventListener("click", () => {
+        if (!state.device) {
+          log("WebGPU not ready. Cannot start training.");
+          return;
+        }
+        if (state.running && !state.paused) {
+          log("Training already running.");
+          return;
+        }
+        const epochs = Number(document.getElementById("epochs").value || 1);
+        const stepsPerEpoch = 100;
+        state.totalSteps = epochs * stepsPerEpoch;
+        state.running = true;
+        state.paused = false;
+        log(`Training started: ${epochs} epochs, ${state.totalSteps} steps.`);
+        loop();
+      });
+
+      document.getElementById("pauseBtn").addEventListener("click", () => {
+        if (!state.running) {
+          log("No training session active.");
+          return;
+        }
+        state.paused = !state.paused;
+        log(state.paused ? "Training paused." : "Training resumed.");
+        if (!state.paused) {
+          loop();
+        }
+      });
+
+      document.getElementById("stopBtn").addEventListener("click", () => {
+        if (!state.running) {
+          log("No training session to stop.");
+          return;
+        }
+        state.running = false;
+        log("Training stopped.");
+      });
+
+      document.getElementById("exportBtn").addEventListener("click", () => {
+        if (!state.device) {
+          log("WebGPU not ready. Nothing to export.");
+          return;
+        }
+        const fakeDelta = {
+          lora_rank: Number(document.getElementById("loraRank").value || 8),
+          steps: state.step,
+          note: "This is a placeholder LoRA delta. Replace with real weights.",
+        };
+        const blob = new Blob([JSON.stringify(fakeDelta, null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "lora-delta.json";
+        link.click();
+        URL.revokeObjectURL(link.href);
+        log("Exported placeholder LoRA delta.");
+      });
+
+      document.getElementById("resetBtn").addEventListener("click", () => {
+        resetState();
+        log("Session reset.");
+      });
+
+      updateContext();
+      estimateMemory();
+      setupWebGPU();
+    </script>
+  </body>
+</html>
